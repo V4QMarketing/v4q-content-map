@@ -420,6 +420,7 @@ thead th{position:relative} /* needed for absolute resize handle */
       <span id="syncStatus"></span>
     </div>
     <div class="header-right" id="headerRight">
+      <div id="onlineUsersBar" style="display:flex;align-items:center;padding-left:6px;margin-right:4px" title="Gerade online"></div>
       <button class="btn-ghost" style="font-size:12px;padding:5px 10px" onclick="openColModal()" title="Kategorien verwalten">⚙️ Kategorien</button>
       <button class="btn-ghost" style="font-size:12px;padding:5px 10px" id="exportBtn">↓ Import/Export</button>
       <button class="btn-primary" style="font-size:12px;padding:5px 11px" id="newBtn" onclick="openNewDrawer()">+ Neuer Inhalt</button>
@@ -572,6 +573,7 @@ let currentView = 'table';
 let colorMode = 'type';
 let hiddenCats = new Set();
 let simulation = null; // legacy reference kept for compatibility
+let onlineUsers = {}; // { userId: { display_name, color } } — realtime presence
 let _sim = null;       // new simulation reference
 let selectedNodeId = null;
 let mapZoom = null;
@@ -830,11 +832,62 @@ async function loadData() {
 }
 
 function subscribeRealtime() {
-  sb.channel('cm_rt').on('postgres_changes',{event:'*',schema:'public',table:'content_items'},async(p)=>{
-    await loadData();
-    const icons = {INSERT:'✨',UPDATE:'✏️',DELETE:'🗑️'};
-    showActivity(icons[p.eventType]||'●', p.new?.title || p.old?.title || 'Eintrag');
-  }).subscribe();
+  // Content items realtime
+  sb.channel('cm_rt')
+    .on('postgres_changes',{event:'*',schema:'public',table:'content_items'},async(p)=>{
+      await loadData();
+      const icons = {INSERT:'✨',UPDATE:'✏️',DELETE:'🗑️'};
+      showActivity(icons[p.eventType]||'●', p.new?.title || p.old?.title || 'Eintrag');
+    })
+    .subscribe();
+
+  // Categories realtime — sync when any user saves columns
+  sb.channel('cm_settings')
+    .on('postgres_changes',{event:'*',schema:'public',table:'app_settings'},async(p)=>{
+      if(p.new?.key === 'columns' && Array.isArray(p.new?.value)) {
+        columns = p.new.value;
+        const SYSTEM_IDS = ['title','internalLinks','notes','createdBy'];
+        columns.forEach(col => { if(!SYSTEM_IDS.includes(col.id)) delete col.locked; });
+        localStorage.setItem(COL_STORE, JSON.stringify(columns));
+        render();
+        toast('🔄 Kategorien aktualisiert');
+      }
+    })
+    .subscribe();
+
+  // Presence — who is online
+  const presenceColors = ['#e03131','#1971c2','#2f9e44','#e8590c','#9b4dca','#f0b429','#0ca678','#d6336c'];
+  const myColor = presenceColors[Math.abs(currentUser.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0)) % presenceColors.length];
+  const presenceChannel = sb.channel('cm_presence', { config: { presence: { key: currentUser.id } } });
+  presenceChannel
+    .on('presence', { event: 'sync' }, () => {
+      const state = presenceChannel.presenceState();
+      onlineUsers = {};
+      Object.entries(state).forEach(([uid, presences]) => {
+        const p = presences[0];
+        if(p) onlineUsers[uid] = { display_name: p.display_name, color: p.color };
+      });
+      renderOnlineUsers();
+    })
+    .subscribe(async status => {
+      if(status === 'SUBSCRIBED') {
+        await presenceChannel.track({
+          display_name: currentProfile?.display_name || currentUser.email,
+          color: myColor
+        });
+      }
+    });
+}
+
+function renderOnlineUsers() {
+  let el = document.getElementById('onlineUsersBar');
+  if(!el) return;
+  const users = Object.values(onlineUsers);
+  el.innerHTML = users.map(u => {
+    const initials = (u.display_name || '?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+    return `<div title="${esc(u.display_name || '')}" style="width:28px;height:28px;border-radius:50%;background:${u.color};color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;margin-left:-6px;border:2px solid var(--surface);flex-shrink:0">${initials}</div>`;
+  }).join('');
+  el.style.display = users.length > 0 ? 'flex' : 'none';
 }
 
 // ═══════════════════════════════════════════
@@ -2144,6 +2197,7 @@ function moveTT(){}
 // ═══════════════════════════════════════════
 let editingColIndex = null; // index of column being edited
 let editColOptions = [];    // options for the column being edited
+const _autoColors = ['#e03131','#1971c2','#2f9e44','#e8590c','#9b4dca','#f0b429','#495057','#0ca678','#d6336c','#1098ad','#6741d9','#5c7cfa','#74c0fc','#96f2d7','#ffd43b','#ff922b'];
 
 function openColModal() {
   newColOptions = [];
@@ -2356,10 +2410,26 @@ function renderEditOptionList() {
   editColOptions.forEach((opt, i) => {
     const div = document.createElement('div');
     div.className = 'option-item';
+    div.setAttribute('draggable', 'true');
+    div.dataset.index = i;
     div.innerHTML = `
+      <span style="cursor:grab;color:var(--text-faint);padding:0 4px;font-size:14px" title="Reihenfolge ändern">⠿</span>
       <input type="text" value="${esc(opt.label)}" placeholder="Optionsname" oninput="editColOptions[${i}].label=this.value">
       <input type="color" value="${opt.color||'#888'}" class="option-color" oninput="editColOptions[${i}].color=this.value">
       <button class="btn-icon" onclick="removeEditOption(${i})" style="color:var(--red)">✕</button>`;
+    div.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', i); div.style.opacity='0.4'; });
+    div.addEventListener('dragend', () => { div.style.opacity='1'; });
+    div.addEventListener('dragover', e => { e.preventDefault(); div.style.background='var(--surface2)'; });
+    div.addEventListener('dragleave', () => { div.style.background=''; });
+    div.addEventListener('drop', e => {
+      e.preventDefault(); div.style.background='';
+      const from = parseInt(e.dataTransfer.getData('text/plain'));
+      const to = i;
+      if(from === to) return;
+      const moved = editColOptions.splice(from, 1)[0];
+      editColOptions.splice(to, 0, moved);
+      renderEditOptionList();
+    });
     el.appendChild(div);
   });
 }
@@ -2371,6 +2441,7 @@ function addEditOption() {
   if (!label) return;
   editColOptions.push({label, color: col.value});
   inp.value = '';
+  if(col) col.value = _autoColors[editColOptions.length % _autoColors.length];
   renderEditOptionList();
 }
 function removeEditOption(i) { editColOptions.splice(i,1); renderEditOptionList(); }
@@ -2416,10 +2487,26 @@ function renderOptionList() {
   newColOptions.forEach((opt, i) => {
     const div = document.createElement('div');
     div.className = 'option-item';
+    div.setAttribute('draggable', 'true');
+    div.dataset.index = i;
     div.innerHTML = `
+      <span style="cursor:grab;color:var(--text-faint);padding:0 4px;font-size:14px" title="Reihenfolge ändern">⠿</span>
       <input type="text" value="${esc(opt.label)}" placeholder="Optionsname" oninput="newColOptions[${i}].label=this.value">
       <input type="color" value="${opt.color}" class="option-color" oninput="newColOptions[${i}].color=this.value" title="Farbe">
       <button class="btn-icon" onclick="removeOption(${i})" style="color:var(--red)">✕</button>`;
+    div.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', i); div.style.opacity='0.4'; });
+    div.addEventListener('dragend', () => { div.style.opacity='1'; });
+    div.addEventListener('dragover', e => { e.preventDefault(); div.style.background='var(--surface2)'; });
+    div.addEventListener('dragleave', () => { div.style.background=''; });
+    div.addEventListener('drop', e => {
+      e.preventDefault(); div.style.background='';
+      const from = parseInt(e.dataTransfer.getData('text/plain'));
+      const to = i;
+      if(from === to) return;
+      const moved = newColOptions.splice(from, 1)[0];
+      newColOptions.splice(to, 0, moved);
+      renderOptionList();
+    });
     el.appendChild(div);
   });
 }
