@@ -1733,6 +1733,8 @@ let _buildGraphPending = null;
 let _buildGraphRunning = false;
 
 function buildGraph() {
+  // Stop any running simulation immediately to prevent stale tick handlers
+  if(_sim) { _sim.stop(); _sim = null; }
   // Debounce: if called rapidly, only run the last call
   if(_buildGraphPending) clearTimeout(_buildGraphPending);
   _buildGraphPending = setTimeout(_buildGraphNow, 50);
