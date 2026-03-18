@@ -637,14 +637,39 @@ function loadColumns() {
   try {
     const r = localStorage.getItem(COL_STORE);
     columns = r ? JSON.parse(r) : defaultColumns();
-    // Fix: only title, internalLinks, notes, createdBy should be locked
     const SYSTEM_IDS = ['title','internalLinks','notes','createdBy'];
-    columns.forEach(col => {
-      if(!SYSTEM_IDS.includes(col.id)) delete col.locked;
-    });
+    columns.forEach(col => { if(!SYSTEM_IDS.includes(col.id)) delete col.locked; });
   } catch { columns = defaultColumns(); }
 }
-function saveColumns() { localStorage.setItem(COL_STORE, JSON.stringify(columns)); }
+
+async function syncColumnsFromSupabase() {
+  // Load columns from Supabase so all users see the same categories
+  try {
+    const { data, error } = await sb.from('app_settings').select('value').eq('key','columns').single();
+    if(error || !data) {
+      // No columns in Supabase yet — upload current localStorage columns
+      await saveColumnsToSupabase();
+      return;
+    }
+    const remote = data.value;
+    if(Array.isArray(remote) && remote.length > 0) {
+      columns = remote;
+      const SYSTEM_IDS = ['title','internalLinks','notes','createdBy'];
+      columns.forEach(col => { if(!SYSTEM_IDS.includes(col.id)) delete col.locked; });
+      localStorage.setItem(COL_STORE, JSON.stringify(columns));
+    }
+  } catch(e) { /* Supabase not available, use localStorage */ }
+}
+
+async function saveColumnsToSupabase() {
+  try {
+    await sb.from('app_settings').upsert({ key: 'columns', value: columns, updated_at: new Date().toISOString() });
+  } catch(e) { /* ignore */ }
+}
+function saveColumns() {
+  localStorage.setItem(COL_STORE, JSON.stringify(columns));
+  saveColumnsToSupabase(); // sync to Supabase for all users
+}
 
 // ═══════════════════════════════════════════
 // AUTH
@@ -2966,6 +2991,7 @@ async function boot() {
     currentUser = session.user;
     document.getElementById('appShell').style.display='flex';
     await loadProfile(currentUser.id);
+    await syncColumnsFromSupabase(); // sync categories from Supabase
     initViewControls();
     await loadData();
     subscribeRealtime();
@@ -2979,6 +3005,7 @@ async function boot() {
       document.getElementById('login-screen').classList.remove('visible');
       document.getElementById('appShell').style.display='flex';
       await loadProfile(currentUser.id);
+      await syncColumnsFromSupabase(); // sync categories from Supabase
       initViewControls();
       await loadData();
       subscribeRealtime();
