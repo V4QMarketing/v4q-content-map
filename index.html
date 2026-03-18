@@ -2033,6 +2033,8 @@ function _buildGraphNow() {
 
   _sim.on('tick', tick);
   _sim.on('end', ()=>{ persistPos(); });
+  // Force initial tick so fixed nodes get their transform set immediately
+  tick();
 
   // ── Zoom ──
   mapZoom = d3.zoom().scaleExtent([0.08,6]).on('zoom',e=>g.attr('transform',e.transform));
