@@ -1090,6 +1090,7 @@ function render() {
 // ── TABLE ──
 // Bulk selection state
 const selectedIds = new Set();
+let _lastCheckedIndex = -1; // for shift-click range selection
 
 function renderTable(items, area) {
   // Preserve scroll position
@@ -1116,6 +1117,7 @@ function renderTable(items, area) {
   items.forEach(item => {
     const tr = document.createElement('tr');
     tr.dataset.id = item.id;
+    tr.dataset.index = idx;
     tr.style.height = currentRowHeight + 'px';
     if (isIdea(item)) tr.setAttribute('data-idea','1');
     if (selectedIds.has(item.id)) tr.classList.add('row-selected');
@@ -1127,7 +1129,28 @@ function renderTable(items, area) {
     cb.type = 'checkbox';
     cb.className = 'row-check';
     cb.checked = selectedIds.has(item.id);
-    cb.addEventListener('change', () => toggleRowSelect(item.id, cb.checked, tr));
+    cb.addEventListener('change', (e) => {
+      if (e.shiftKey && _lastCheckedIndex >= 0) {
+        // Shift-click: select range
+        const rows = [...document.querySelectorAll('#tBody tr')];
+        const currentIndex = parseInt(tr.dataset.index);
+        const start = Math.min(_lastCheckedIndex, currentIndex);
+        const end = Math.max(_lastCheckedIndex, currentIndex);
+        rows.forEach(row => {
+          const ri = parseInt(row.dataset.index);
+          if (ri >= start && ri <= end) {
+            const rId = row.dataset.id;
+            const rCb = row.querySelector('.row-check');
+            if (cb.checked) { selectedIds.add(rId); row.classList.add('row-selected'); if(rCb) rCb.checked=true; }
+            else { selectedIds.delete(rId); row.classList.remove('row-selected'); if(rCb) rCb.checked=false; }
+          }
+        });
+      } else {
+        toggleRowSelect(item.id, cb.checked, tr);
+      }
+      if (cb.checked) _lastCheckedIndex = parseInt(tr.dataset.index);
+      updateBulkBar();
+    });
     tdCb.appendChild(cb);
     tr.appendChild(tdCb);
 
@@ -1192,6 +1215,7 @@ function toggleSelectAll(checked) {
 
 function clearBulkSelection() {
   selectedIds.clear();
+  _lastCheckedIndex = -1;
   document.querySelectorAll('#tBody tr').forEach(tr => {
     tr.classList.remove('row-selected');
     const cb = tr.querySelector('.row-check');
@@ -1213,16 +1237,44 @@ function updateBulkBar() {
   }
   bar.classList.add('visible');
   countEl.textContent = `${selectedIds.size} ausgewählt`;
-  // Build dropdowns for all select-type columns
+  // Build controls for all select/multiselect columns
   const selectCols = columns.filter(c => c.type === 'select' || c.type === 'multiselect');
-  fieldsEl.innerHTML = selectCols.map(col => `
-    <div class="bulk-field">
-      <label>${esc(col.name)}:</label>
-      <select id="bulk_${col.id}" onchange="onBulkFieldChange('${col.id}')">
-        <option value="">– nicht ändern –</option>
-        ${(col.options||[]).map(o=>`<option value="${esc(o.label)}">${esc(o.label)}</option>`).join('')}
-      </select>
-    </div>`).join('');
+  fieldsEl.innerHTML = selectCols.map(col => {
+    if (col.type === 'multiselect') {
+      // Multi-checkbox dropdown for multiselect columns
+      const opts = (col.options||[]).map(o =>
+        `<label style="display:flex;align-items:center;gap:6px;padding:3px 8px;cursor:pointer;white-space:nowrap;font-size:12px">
+          <input type="checkbox" value="${esc(o.label)}" class="bulk-ms-opt" data-col="${col.id}">
+          <span style="width:10px;height:10px;border-radius:50%;background:${o.color||'#888'};display:inline-block;flex-shrink:0"></span>
+          ${esc(o.label)}
+        </label>`
+      ).join('');
+      return `<div class="bulk-field" style="position:relative">
+        <label>${esc(col.name)}:</label>
+        <div style="position:relative;display:inline-block">
+          <button onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'"
+            style="padding:4px 10px;border:1px solid var(--border-mid);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:12px;cursor:pointer;font-family:var(--sans)">
+            Auswählen ▾
+          </button>
+          <div style="display:none;position:absolute;top:100%;left:0;background:var(--surface);border:1px solid var(--border-mid);border-radius:var(--radius);box-shadow:var(--shadow-lg);z-index:100;min-width:160px;padding:4px 0">
+            ${opts}
+            <div style="border-top:1px solid var(--border);margin-top:4px;padding:4px 8px;display:flex;gap:6px">
+              <button onclick="applyBulkMultiselect('${col.id}','add')" style="flex:1;padding:3px;font-size:11px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);cursor:pointer">+ Hinzufügen</button>
+              <button onclick="applyBulkMultiselect('${col.id}','remove')" style="flex:1;padding:3px;font-size:11px;background:var(--red);color:#fff;border:none;border-radius:var(--radius);cursor:pointer">− Entfernen</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    } else {
+      return `<div class="bulk-field">
+        <label>${esc(col.name)}:</label>
+        <select id="bulk_${col.id}" onchange="onBulkFieldChange('${col.id}')">
+          <option value="">– nicht ändern –</option>
+          ${(col.options||[]).map(o=>`<option value="${esc(o.label)}">${esc(o.label)}</option>`).join('')}
+        </select>
+      </div>`;
+    }
+  }).join('');
 }
 
 function onBulkFieldChange(colId) {
@@ -1245,6 +1297,31 @@ async function bulkDelete() {
     },
     'Einträge löschen'
   );
+}
+
+async function applyBulkMultiselect(colId, mode) {
+  // Get checked options
+  const checked = [...document.querySelectorAll(`.bulk-ms-opt[data-col="${colId}"]:checked`)].map(c=>c.value);
+  if(!checked.length) { toast('Bitte mindestens eine Option auswählen'); return; }
+  const ids = [...selectedIds];
+  setSyncStatus('loading', 'Speichere…');
+  let errors = 0;
+  for(const id of ids) {
+    const item = data.find(d=>d.id===id);
+    if(!item) continue;
+    let current = Array.isArray(item[colId]) ? [...item[colId]] : (item[colId] ? [item[colId]] : []);
+    if(mode === 'add') {
+      checked.forEach(v => { if(!current.includes(v)) current.push(v); });
+    } else {
+      current = current.filter(v => !checked.includes(v));
+    }
+    item[colId] = current;
+    const row = itemToRow(item);
+    const {error} = await sb.from('content_items').update(row).eq('id', id);
+    if(error) errors++;
+  }
+  setSyncStatus(errors ? 'error' : 'ok', errors ? 'Fehler' : `${ids.length} Einträge`);
+  toast(errors ? `${errors} Fehler` : `✅ ${ids.length} Einträge aktualisiert`);
 }
 
 async function applyBulkEdit() {
