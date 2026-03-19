@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>V4Q Content Map</title><!-- v2026-03-19e -->
+<title>V4Q Content Map</title><!-- v2026-03-19f -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <style>
@@ -153,7 +153,8 @@ td.editing .cell-edit{display:block}
 #bulkBar.visible{display:flex}
 .bulk-count{font-size:13px;font-weight:600;white-space:nowrap}
 .bulk-field{display:flex;align-items:center;gap:5px;font-size:12px}
-.bulk-field label{color:rgba(255,255,255,.7);white-space:nowrap}
+.bulk-field>label{color:rgba(255,255,255,.7);white-space:nowrap}
+.dropdown-label{color:var(--text)!important;white-space:nowrap}
 .bulk-field select{padding:4px 8px;border:1px solid rgba(255,255,255,.3);border-radius:var(--radius);background:rgba(255,255,255,.12);color:#fff;font-size:12px;font-family:var(--sans);outline:none;min-width:110px}
 .bulk-field select option{background:var(--navy);color:#fff}
 .bulk-apply{background:var(--accent);color:#fff;border:none;border-radius:var(--radius);padding:5px 12px;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap}
@@ -1129,28 +1130,33 @@ function renderTable(items, area) {
     cb.type = 'checkbox';
     cb.className = 'row-check';
     cb.checked = selectedIds.has(item.id);
-    cb.addEventListener('click', (e) => {
-      // Use click event (not change) so shiftKey is available
+    // Use mousedown to detect shift before checked state changes
+    cb.addEventListener('mousedown', (e) => {
       if (e.shiftKey && _lastCheckedIndex >= 0) {
-        // Shift-click: select range
+        e.preventDefault(); // prevent default check toggle, we handle it manually
         const rows = [...document.querySelectorAll('#tBody tr')];
         const currentIndex = parseInt(tr.dataset.index);
         const start = Math.min(_lastCheckedIndex, currentIndex);
         const end = Math.max(_lastCheckedIndex, currentIndex);
+        const shouldCheck = !cb.checked; // toggle based on current state
         rows.forEach(row => {
           const ri = parseInt(row.dataset.index);
           if (ri >= start && ri <= end) {
             const rId = row.dataset.id;
             const rCb = row.querySelector('.row-check');
-            if (cb.checked) { selectedIds.add(rId); row.classList.add('row-selected'); if(rCb) rCb.checked=true; }
+            if (shouldCheck) { selectedIds.add(rId); row.classList.add('row-selected'); if(rCb) rCb.checked=true; }
             else { selectedIds.delete(rId); row.classList.remove('row-selected'); if(rCb) rCb.checked=false; }
           }
         });
-      } else {
-        toggleRowSelect(item.id, cb.checked, tr);
+        _lastCheckedIndex = currentIndex;
+        updateBulkBar();
       }
-      _lastCheckedIndex = parseInt(tr.dataset.index); // update on every click
-      updateBulkBar();
+    });
+    cb.addEventListener('change', (e) => {
+      if (!e.shiftKey) { // normal click (shift is handled by mousedown)
+        toggleRowSelect(item.id, cb.checked, tr);
+        _lastCheckedIndex = parseInt(tr.dataset.index);
+      }
     });
     tdCb.appendChild(cb);
     tr.appendChild(tdCb);
@@ -1244,7 +1250,7 @@ function updateBulkBar() {
     if (col.type === 'multiselect') {
       // Multi-checkbox dropdown for multiselect columns
       const opts = (col.options||[]).map(o =>
-        `<label style="display:flex;align-items:center;gap:6px;padding:3px 8px;cursor:pointer;white-space:nowrap;font-size:12px;color:var(--text)">
+        `<label class="dropdown-label" style="display:flex;align-items:center;gap:6px;padding:3px 8px;cursor:pointer;white-space:nowrap;font-size:12px">
           <input type="checkbox" value="${esc(o.label)}" class="bulk-ms-opt" data-col="${col.id}">
           <span style="width:10px;height:10px;border-radius:50%;background:${o.color||'#888'};display:inline-block;flex-shrink:0"></span>
           ${esc(o.label)}
