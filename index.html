@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>V4Q Content Map</title>
+<title>V4Q Content Map</title><!-- v2026-03-19c -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <style>
@@ -1148,7 +1148,7 @@ function renderTable(items, area) {
       } else {
         toggleRowSelect(item.id, cb.checked, tr);
       }
-      if (cb.checked) _lastCheckedIndex = parseInt(tr.dataset.index);
+      _lastCheckedIndex = parseInt(tr.dataset.index); // update on every click
       updateBulkBar();
     });
     tdCb.appendChild(cb);
@@ -1256,7 +1256,7 @@ function updateBulkBar() {
             style="padding:4px 10px;border:1px solid var(--border-mid);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:12px;cursor:pointer;font-family:var(--sans)">
             Auswählen ▾
           </button>
-          <div style="display:none;position:absolute;top:100%;left:0;background:var(--surface);border:1px solid var(--border-mid);border-radius:var(--radius);box-shadow:var(--shadow-lg);z-index:100;min-width:160px;padding:4px 0">
+          <div style="display:none;position:absolute;top:100%;left:0;background:var(--surface);border:1px solid var(--border-mid);border-radius:var(--radius);box-shadow:var(--shadow-lg);z-index:100;min-width:220px;max-height:280px;overflow-y:auto;padding:4px 0">
             ${opts}
             <div style="border-top:1px solid var(--border);margin-top:4px;padding:4px 8px;display:flex;gap:6px">
               <button onclick="applyBulkMultiselect('${col.id}','add')" style="flex:1;padding:3px;font-size:11px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);cursor:pointer">+ Hinzufügen</button>
