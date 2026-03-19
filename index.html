@@ -835,6 +835,12 @@ async function loadData() {
   setSyncStatus('ok', `${data.length} Einträge`);
 
   render();
+  // Restore scroll position after data reload (e.g. after link changes via realtime)
+  if (_savedScroll > 0) {
+    const ca = document.getElementById('contentArea');
+    if (ca) ca.scrollTop = _savedScroll;
+    requestAnimationFrame(() => { const ca2 = document.getElementById('contentArea'); if (ca2) ca2.scrollTop = _savedScroll; });
+  }
 }
 
 function subscribeRealtime() {
