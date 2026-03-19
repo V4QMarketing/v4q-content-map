@@ -2636,7 +2636,8 @@ function renderDrawerBody(item) {
       html += `<select id="df_${col.id}"><option value="">– wählen –</option>${opts}</select>`;
     } else if (col.type === 'multiselect') {
       html += `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:5px" id="ms_${col.id}">`;
-      const vals = Array.isArray(val) ? val : [];
+      // Handle both arrays and legacy strings
+      const vals = Array.isArray(val) ? val : (val ? [val] : []);
       (col.options||[]).forEach(o => {
         const checked = vals.includes(o.label);
         html += `<label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;background:${o.color}22;border:1px solid ${o.color}55;padding:3px 9px;border-radius:20px;color:${o.color}">
@@ -2847,8 +2848,8 @@ function itemToRow(item) {
     custom_fields: {
       ...custom,
       // Store multiselect arrays in custom_fields since DB columns are strings
-      ...(Array.isArray(item.topic) ? {topic: item.topic} : {}),
-      ...(Array.isArray(item.phase) ? {phase: item.phase} : {}),
+      ...(Array.isArray(item.topic) ? {topic: item.topic} : (item.topic ? {topic: [item.topic]} : {})),
+      ...(Array.isArray(item.phase) ? {phase: item.phase} : (item.phase ? {phase: [item.phase]} : {})),
       potentialLinks: item.potentialLinks||[],
       potentialLinksText: item.potentialLinksText||'',
       isIdeaFlag: item.isIdeaFlag||false,
