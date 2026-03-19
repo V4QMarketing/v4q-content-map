@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>V4Q Content Map</title><!-- v2026-03-19c -->
+<title>V4Q Content Map</title><!-- v2026-03-19e -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <style>
@@ -478,7 +478,7 @@ thead th{position:relative} /* needed for absolute resize handle */
           <button id="viewMap" onclick="setView('map')" title="Link Map">⬡</button>
         </div>
       </div>
-      <div id="bulkBar">
+      <div id="bulkBar" style="overflow:visible">
         <span class="bulk-count" id="bulkCount">0 ausgewählt</span>
         <div id="bulkFields" style="display:flex;gap:10px;flex-wrap:wrap;flex:1"></div>
         <button class="bulk-apply" onclick="applyBulkEdit()">Anwenden</button>
@@ -1129,7 +1129,8 @@ function renderTable(items, area) {
     cb.type = 'checkbox';
     cb.className = 'row-check';
     cb.checked = selectedIds.has(item.id);
-    cb.addEventListener('change', (e) => {
+    cb.addEventListener('click', (e) => {
+      // Use click event (not change) so shiftKey is available
       if (e.shiftKey && _lastCheckedIndex >= 0) {
         // Shift-click: select range
         const rows = [...document.querySelectorAll('#tBody tr')];
@@ -1243,7 +1244,7 @@ function updateBulkBar() {
     if (col.type === 'multiselect') {
       // Multi-checkbox dropdown for multiselect columns
       const opts = (col.options||[]).map(o =>
-        `<label style="display:flex;align-items:center;gap:6px;padding:3px 8px;cursor:pointer;white-space:nowrap;font-size:12px">
+        `<label style="display:flex;align-items:center;gap:6px;padding:3px 8px;cursor:pointer;white-space:nowrap;font-size:12px;color:var(--text)">
           <input type="checkbox" value="${esc(o.label)}" class="bulk-ms-opt" data-col="${col.id}">
           <span style="width:10px;height:10px;border-radius:50%;background:${o.color||'#888'};display:inline-block;flex-shrink:0"></span>
           ${esc(o.label)}
