@@ -824,6 +824,9 @@ function rowToItem(row) {
 }
 
 async function loadData() {
+  // Preserve scroll position across data reloads
+  const _contentArea = document.getElementById('contentArea');
+  const _savedScroll = _contentArea?.scrollTop || 0;
   setSyncStatus('loading', 'Lade…');
   const { data: rows, error } = await sb.from('content_items').select('*').order('title');
   if (error) { setSyncStatus('error', 'Fehler'); return; }
@@ -1104,7 +1107,11 @@ function renderTable(items, area) {
   html += `<th class="th-actions"></th></tr></thead><tbody id="tBody"></tbody></table></div>`;
   area.innerHTML = html;
   // Restore scroll position
-  if(scrollTop > 0) requestAnimationFrame(() => { if(contentArea) contentArea.scrollTop = scrollTop; });
+  if(scrollTop > 0) {
+    // Restore immediately and again after paint to handle async rendering
+    if(contentArea) contentArea.scrollTop = scrollTop;
+    requestAnimationFrame(() => { if(contentArea) contentArea.scrollTop = scrollTop; });
+  }
   const tbody = document.getElementById('tBody');
   items.forEach(item => {
     const tr = document.createElement('tr');
@@ -1861,9 +1868,14 @@ function _buildGraphNow() {
 
   // Arrow markers
   const defs = svg.append('defs');
-  defs.append('marker').attr('id','arr').attr('viewBox','0 -4 8 8').attr('refX',22).attr('refY',0).attr('markerWidth',5).attr('markerHeight',5).attr('orient','auto').append('path').attr('d','M0,-4L8,0L0,4').attr('fill','#bbb');
-  defs.append('marker').attr('id','arr-idea').attr('viewBox','0 -4 8 8').attr('refX',22).attr('refY',0).attr('markerWidth',5).attr('markerHeight',5).attr('orient','auto').append('path').attr('d','M0,-4L8,0L0,4').attr('fill','#f0b429');
-  defs.append('marker').attr('id','arr-pot').attr('viewBox','0 -4 8 8').attr('refX',22).attr('refY',0).attr('markerWidth',5).attr('markerHeight',5).attr('orient','auto').append('path').attr('d','M0,-4L8,0L0,4').attr('fill','#f0b429');
+  // Arrow markers - colors: grey, teal (outgoing), blue (incoming), idea
+  ['arr:#bbb','arr-idea:#f0b429','arr-pot:#f0b429','arr-accent:var(--accent-mid)','arr-blue:var(--blue)'].forEach(s=>{
+    const [id,fill]=s.split(':');
+    defs.append('marker').attr('id',id).attr('viewBox','0 -4 8 8').attr('refX',8).attr('refY',0)
+      .attr('markerWidth',5).attr('markerHeight',5).attr('orient','auto')
+      .attr('markerUnits','strokeWidth')
+      .append('path').attr('d','M0,-4L8,0L0,4').attr('fill',fill);
+  });
 
   const g = svg.append('g');
 
@@ -2121,7 +2133,17 @@ function _buildGraphNow() {
 
   // ── Tick function ──
   function tick(){
-    linkSel.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+    linkSel.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y)
+      .attr('x2',d=>{
+        const dx=d.target.x-d.source.x,dy=d.target.y-d.source.y,dist=Math.sqrt(dx*dx+dy*dy)||1;
+        const r=nr(d.target)+3; // stop just outside target circle
+        return d.target.x-dx/dist*r;
+      })
+      .attr('y2',d=>{
+        const dx=d.target.x-d.source.x,dy=d.target.y-d.source.y,dist=Math.sqrt(dx*dx+dy*dy)||1;
+        const r=nr(d.target)+3;
+        return d.target.y-dy/dist*r;
+      });
     ideaLinkSel.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
     potLinkSel.attr('x1',d=>{const n=nodes.find(x=>x.id===(d.source.id||d.source));return n?.x||0;})
               .attr('y1',d=>{const n=nodes.find(x=>x.id===(d.source.id||d.source));return n?.y||0;})
@@ -2155,7 +2177,7 @@ function applyHighlight(nodeId, linkSel, ideaLinkSel, nodeG, adj) {
     nodeG.selectAll('.node-circle').attr('fill-opacity',d=>hiddenCats.has(getNodeLabel(d))?0.15:0.88);
     nodeG.selectAll('.node-ring').attr('stroke-opacity',0.38);
     nodeG.selectAll('.node-label').attr('fill','var(--text-muted)').attr('font-weight','normal');
-    linkSel.attr('stroke','#bbb').attr('stroke-opacity',0.4).attr('stroke-width',1.3);
+    linkSel.attr('stroke','#bbb').attr('stroke-opacity',0.4).attr('stroke-width',1.3).attr('marker-end','url(#arr)');
     ideaLinkSel.attr('stroke-opacity',0.55);
     return;
   }
@@ -2165,9 +2187,21 @@ function applyHighlight(nodeId, linkSel, ideaLinkSel, nodeG, adj) {
   nodeG.selectAll('.node-label')
     .attr('fill',d=>(d.id===nodeId||nb.has(d.id))?'var(--text)':'var(--text-faint)')
     .attr('font-weight',d=>d.id===nodeId?'600':'normal');
-  linkSel.attr('stroke',d=>{const s=d.source.id||d.source,t=d.target.id||d.target;return(s===nodeId||t===nodeId)?'var(--accent-mid)':'#bbb';})
+  // Outgoing links (from selected node) = teal/accent, Incoming links (to selected node) = blue
+  linkSel.attr('stroke',d=>{
+      const s=d.source.id||d.source,t=d.target.id||d.target;
+      if(s===nodeId) return'var(--accent-mid)'; // outgoing → teal
+      if(t===nodeId) return'var(--blue)';        // incoming → blue
+      return'#bbb';
+    })
     .attr('stroke-opacity',d=>{const s=d.source.id||d.source,t=d.target.id||d.target;return(s===nodeId||t===nodeId)?0.9:0.06;})
-    .attr('stroke-width',d=>{const s=d.source.id||d.source,t=d.target.id||d.target;return(s===nodeId||t===nodeId)?2.5:1;});
+    .attr('stroke-width',d=>{const s=d.source.id||d.source,t=d.target.id||d.target;return(s===nodeId||t===nodeId)?2.5:1;})
+    .attr('marker-end',d=>{
+      const s=d.source.id||d.source,t=d.target.id||d.target;
+      if(s===nodeId) return'url(#arr-accent)'; // outgoing → teal arrow
+      if(t===nodeId) return'url(#arr-blue)';   // incoming → blue arrow
+      return'url(#arr)';
+    });
   ideaLinkSel.attr('stroke-opacity',d=>{const s=d.source.id||d.source,t=d.target.id||d.target;return(s===nodeId||t===nodeId)?0.9:0.06;});
 }
 
