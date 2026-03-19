@@ -574,6 +574,8 @@ let colorMode = 'type';
 let hiddenCats = new Set();
 let simulation = null; // legacy reference kept for compatibility
 let onlineUsers = {}; // { userId: { display_name, color } } — realtime presence
+let sortColId = 'title'; // which column to sort by
+let sortDir = 'asc';     // 'asc' or 'desc'
 let _sim = null;       // new simulation reference
 let selectedNodeId = null;
 let mapZoom = null;
@@ -934,12 +936,23 @@ function getFiltered() {
     }
     return true;
   });
-  const s = document.getElementById('sortSelect')?.value || 'title';
+  const col = columns.find(c => c.id === sortColId);
   items.sort((a,b) => {
-    if (s==='title') return (a.title||'').localeCompare(b.title||'','de');
-    if (s==='date-desc') return (b.date||'').localeCompare(a.date||'');
-    if (s==='date-asc') return (a.date||'').localeCompare(b.date||'');
-    return 0;
+    let va = a[sortColId], vb = b[sortColId];
+    let cmp = 0;
+    if(col?.type === 'number') {
+      cmp = (parseFloat(va)||0) - (parseFloat(vb)||0);
+    } else if(col?.type === 'date') {
+      cmp = (va||'').localeCompare(vb||'');
+    } else if(col?.type === 'multiselect') {
+      // Use first item alphabetically
+      const a0 = (Array.isArray(va) ? va[0] : va) || '';
+      const b0 = (Array.isArray(vb) ? vb[0] : vb) || '';
+      cmp = a0.localeCompare(b0, 'de');
+    } else {
+      cmp = (String(va||'')).localeCompare(String(vb||''), 'de');
+    }
+    return sortDir === 'asc' ? cmp : -cmp;
   });
   return items;
 }
@@ -1073,15 +1086,22 @@ function render() {
 const selectedIds = new Set();
 
 function renderTable(items, area) {
+  // Preserve scroll position
+  const contentArea = document.getElementById('contentArea');
+  const scrollTop = contentArea?.scrollTop || 0;
   const visCols = columns.filter(c => c.visible);
   let html = `<div class="tbl-wrap"><table><thead><tr>`;
   // Select-all checkbox column
   html += `<th class="th-check"><input type="checkbox" class="row-check" id="selectAllCb" title="Alle auswählen" onchange="toggleSelectAll(this.checked)"></th>`;
   visCols.forEach(col => {
-    html += `<th style="min-width:80px"><div class="th-inner" onclick="cycleSortBy('${col.id}')">${esc(col.name)}</div></th>`;
+    const isSorted = sortColId === col.id;
+  const sortIcon = isSorted ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '';
+  html += `<th style="min-width:80px;cursor:pointer" title="Nach ${esc(col.name)} sortieren"><div class="th-inner" onclick="cycleSortBy('${col.id}')">${esc(col.name)}<span style="color:var(--accent);font-size:10px">${sortIcon}</span></div></th>`;
   });
   html += `<th class="th-actions"></th></tr></thead><tbody id="tBody"></tbody></table></div>`;
   area.innerHTML = html;
+  // Restore scroll position
+  if(scrollTop > 0) requestAnimationFrame(() => { if(contentArea) contentArea.scrollTop = scrollTop; });
   const tbody = document.getElementById('tBody');
   items.forEach(item => {
     const tr = document.createElement('tr');
@@ -3011,7 +3031,15 @@ function initViewControls() {
   const kgw = document.getElementById('kanbanGroupByWrap');
   if(kgw) kgw.style.display = 'none';
 }
-function cycleSortBy(val){ const el=document.getElementById('sortSelect'); if(el) el.value=val==='date'?'date-desc':val; render(); }
+function cycleSortBy(colId) {
+  if(sortColId === colId) {
+    sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortColId = colId;
+    sortDir = 'asc';
+  }
+  render();
+}
 function closeExport(){ document.getElementById('exportPanel').classList.remove('open'); }
 // Custom confirm dialog — Teams blocks window.confirm()
 function showConfirm(message, onOk, title='Bestätigung') {
