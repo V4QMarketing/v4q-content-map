@@ -990,7 +990,12 @@ function renderSidebar() {
     all.innerHTML = `Alle <span class="cnt">${visibleData.length}</span>`;
     el.appendChild(all);
     const counts = {};
-    visibleData.forEach(d => { const v = d[filterCol.id]||'—'; counts[v]=(counts[v]||0)+1; });
+    visibleData.forEach(d => {
+      const raw = d[filterCol.id];
+      // Handle multiselect (array) and select (string)
+      const vals = Array.isArray(raw) ? raw : (raw ? [raw] : ['—']);
+      vals.forEach(v => { counts[v] = (counts[v]||0) + 1; });
+    });
     (filterCol.options||[]).forEach(opt => {
       if (!counts[opt.label]) return;
       const isActive = activeFilter?.values?.has(opt.label);
@@ -1954,6 +1959,9 @@ function _buildGraphNow() {
   if(_sim) { _sim.stop(); _sim = null; }
 
   const svg = d3.select('#mapSvg').attr('width',W).attr('height',H);
+  // Save current zoom transform before rebuild
+  const _existingG = document.querySelector('#mapSvg g');
+  const _savedTransform = _existingG ? d3.zoomTransform(document.querySelector('#mapSvg')) : null;
   svg.selectAll('*').remove();
 
   // Arrow markers
@@ -2252,6 +2260,10 @@ function _buildGraphNow() {
   // ── Zoom ──
   mapZoom = d3.zoom().scaleExtent([0.08,6]).on('zoom',e=>g.attr('transform',e.transform));
   svg.call(mapZoom);
+  // Restore previous zoom/pan if map was rebuilt due to filter change
+  if(_savedTransform && (_savedTransform.k !== 1 || _savedTransform.x !== 0 || _savedTransform.y !== 0)) {
+    svg.call(mapZoom.transform, _savedTransform);
+  }
   svg.on('dblclick.zoom',null);
   svg.on('click',()=>{ selectedNodeId=null; applyHighlight(null,linkSel,ideaLinkSel,nodeG,adj); hideTT(); });
 
