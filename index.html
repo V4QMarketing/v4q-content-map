@@ -1981,7 +1981,11 @@ function _buildGraphNow() {
   const mapData = data.filter(d=>{
     if(ideaMode==='hide'&&isIdea(d)) return false;
     if(ideaMode==='only'&&!isIdea(d)) return false;
-    if(activeFilter && activeFilter.values?.size > 0){ if(!activeFilter.values.has(String(d[activeFilter.colId]||''))) return false; }
+    if(activeFilter && activeFilter.values?.size > 0){
+      const raw = d[activeFilter.colId];
+      const vals = Array.isArray(raw) ? raw : [String(raw||'')];
+      if(!vals.some(v => activeFilter.values.has(String(v)))) return false;
+    }
     return true;
   });
   const idSet = new Set(mapData.map(d=>d.id));
