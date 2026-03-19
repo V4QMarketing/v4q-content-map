@@ -1091,10 +1091,11 @@ function render() {
 const selectedIds = new Set();
 let _lastCheckedIndex = -1; // for shift-click range selection
 let _preservedScroll = 0; // scroll position to preserve across renders
+function _getScrollEl() { return document.querySelector('.tbl-wrap') || document.getElementById('contentArea'); }
 
 function renderTable(items, area) {
   // Preserve scroll position - use max of current and globally preserved
-  const contentArea = document.getElementById('contentArea');
+  const contentArea = _getScrollEl();
   const scrollTop = Math.max(contentArea?.scrollTop || 0, _preservedScroll);
   if(contentArea?.scrollTop > 0) _preservedScroll = contentArea.scrollTop;
   const visCols = columns.filter(c => c.visible);
@@ -1110,9 +1111,9 @@ function renderTable(items, area) {
   area.innerHTML = html;
   // Restore scroll position
   if(scrollTop > 0) {
-    // Restore immediately and again after paint to handle async rendering
     if(contentArea) contentArea.scrollTop = scrollTop;
-    requestAnimationFrame(() => { if(contentArea) contentArea.scrollTop = scrollTop; });
+    requestAnimationFrame(() => { const el = _getScrollEl(); if(el) el.scrollTop = scrollTop; });
+    _preservedScroll = 0; // reset after restore
   }
   const tbody = document.getElementById('tBody');
   items.forEach((item, idx) => {
@@ -1418,7 +1419,7 @@ async function commitCellEdit(td, item, col) {
   if (String(item[col.id]||'') === newVal) return; // no change
   item[col.id] = newVal;
   // Save scroll before DB write (realtime will trigger re-render)
-  const _ca = document.getElementById('contentArea');
+  const _ca = _getScrollEl();
   if(_ca) _preservedScroll = _ca.scrollTop;
   // Build DB payload
   const dbPayload = itemToRow(item);
@@ -1830,7 +1831,7 @@ async function createLinkBetween(sourceId, targetId) {
   if (!source||!target) return;
   if ((source.internalLinks||[]).includes(targetId)) { toast('Bereits verlinkt'); return; }
   const newLinks = [...(source.internalLinks||[]), targetId];
-  const _lCa = document.getElementById('contentArea');
+  const _lCa = _getScrollEl();
   if(_lCa) _preservedScroll = _lCa.scrollTop;
   const {error} = await sb.from('content_items').update({internal_links:newLinks}).eq('id',sourceId);
   if(error) { toast('Fehler: '+error.message); return; }
@@ -2991,7 +2992,7 @@ async function saveEntry() {
   const row = itemToRow({...(drawerItem||{}), ...vals});
   setSyncStatus('loading','Speichere…');
   // Save scroll before DB write (realtime will trigger re-render)
-  const _seCa = document.getElementById('contentArea');
+  const _seCa = _getScrollEl();
   if(_seCa) _preservedScroll = _seCa.scrollTop;
   let error;
   if (drawerItem) {
