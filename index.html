@@ -940,7 +940,10 @@ function getFiltered() {
   items.sort((a,b) => {
     let va = a[sortColId], vb = b[sortColId];
     let cmp = 0;
-    if(col?.type === 'number') {
+    if(col?.type === 'links') {
+      // Sort by number of links
+      cmp = (Array.isArray(va) ? va.length : 0) - (Array.isArray(vb) ? vb.length : 0);
+    } else if(col?.type === 'number') {
       cmp = (parseFloat(va)||0) - (parseFloat(vb)||0);
     } else if(col?.type === 'date') {
       cmp = (va||'').localeCompare(vb||'');
