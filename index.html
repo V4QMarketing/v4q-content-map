@@ -1114,7 +1114,7 @@ function renderTable(items, area) {
     requestAnimationFrame(() => { if(contentArea) contentArea.scrollTop = scrollTop; });
   }
   const tbody = document.getElementById('tBody');
-  items.forEach(item => {
+  items.forEach((item, idx) => {
     const tr = document.createElement('tr');
     tr.dataset.id = item.id;
     tr.dataset.index = idx;
